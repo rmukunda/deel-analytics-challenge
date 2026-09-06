@@ -1,0 +1,14 @@
+
+    
+    
+
+select
+    country_id as unique_field,
+    count(*) as n_records
+
+from DEEL.staging.stg_country
+where country_id is not null
+group by country_id
+having count(*) > 1
+
+
