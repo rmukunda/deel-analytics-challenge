@@ -1,0 +1,33 @@
+version: 2
+
+seeds:
+  - name: acceptance_transactions
+    description: Raw Globepay payment-attempt feed, loaded as-is. One row per card payment attempt processed through the Globepay API. Renamed/typed downstream in `stg_acceptance` — see that model for documented, snake_case column names.
+    columns:
+      - name: external_ref
+      - name: status
+      - name: source
+      - name: ref
+      - name: date_time
+      - name: state
+      - name: cvv_provided
+      - name: amount
+      - name: country
+      - name: currency
+      - name: rates
+
+  - name: chargeback_report
+    description: Raw Globepay chargeback feed, loaded as-is. One row per payment transaction with its chargeback outcome. Renamed/typed downstream in `stg_chargeback`.
+    columns:
+      - name: external_ref
+      - name: status
+      - name: source
+      - name: chargeback
+
+  - name: countries
+    description: Hand-built country/currency reference data (no external source system). One row per country. Passed through `stg_country` unchanged into `dim_country`.
+    columns:
+      - name: country_id
+      - name: country_code
+      - name: country_name
+      - name: currency_code

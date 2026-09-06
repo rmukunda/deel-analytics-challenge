@@ -1,0 +1,22 @@
+version: 2
+
+macros:
+  - name: get_fx_rate_to_usd
+    description: Extracts one currency's rate out of a transaction's raw `rates` JSON map (parses the JSON, looks up the given currency key, casts to `decimal(10, 6)`). Centralizes the parse/lookup/cast logic so it isn't copy-pasted anywhere an FX rate is needed. Used in `int_acceptance_chargeback` to resolve `fx_rate_usd_to_local`, which is then inverted into `fx_rate_local_to_usd`.
+    arguments:
+      - name: fx_rates_to_usd
+        type: string (column reference)
+        description: Column holding the raw JSON map of currency -> rate-to-USD for the transaction.
+      - name: currency
+        type: string (column reference or literal)
+        description: The currency code to look up in the JSON map.
+
+  - name: generate_schema_name
+    description: Overrides dbt's built-in schema-name macro. Default dbt behavior concatenates a model's custom `+schema:` config onto the connection's target schema (`<target_schema>_<custom_schema_name>`); this override uses the custom schema name as-is instead, falling back to `target.schema` only when no custom schema is configured. This is what makes seeds/models land in clean schemas (`raw`, `staging`, `intermediate`, `marts`) rather than `PUBLIC_RAW`, `PUBLIC_STAGING`, etc.
+    arguments:
+      - name: custom_schema_name
+        type: string | none
+        description: The `+schema:` value configured on the node (via `dbt_project.yml` or model config), or `none` if unset.
+      - name: node
+        type: node
+        description: The model/seed's parsed node metadata. Accepted because dbt always calls this macro with both arguments, but unused in this implementation.

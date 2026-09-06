@@ -1,0 +1,63 @@
+[sqlfluff]
+templater = dbt
+dialect = snowflake
+sql_file_exts = .sql
+max_line_length = 100
+
+# https://docs.getdbt.com/best-practices/how-we-style/2-how-we-style-our-sql
+exclude_rules = ambiguous.column_count, structure.column_order
+
+[sqlfluff:templater:dbt]
+project_dir = ./
+profiles_dir = ~/.dbt
+target = dev
+
+[sqlfluff:indentation]
+tab_space_size = 4
+indent_unit = space
+
+[sqlfluff:layout:type:comma]
+spacing_before = touch
+line_position = trailing
+
+# dbt Labs style guide: lowercase keywords, identifiers, and functions
+[sqlfluff:rules:capitalisation.keywords]
+capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.identifiers]
+capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.functions]
+capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.literals]
+capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.types]
+capitalisation_policy = lower
+
+# dbt Labs style guide: trailing commas, 4-space indents already covered above
+[sqlfluff:rules:aliasing.table]
+aliasing = explicit
+
+[sqlfluff:rules:aliasing.column]
+aliasing = explicit
+
+[sqlfluff:rules:aliasing.expression]
+allow_scalar = true
+
+[sqlfluff:rules:convention.select_trailing_comma]
+select_clause_trailing_comma = forbid
+
+[sqlfluff:rules:convention.count_rows]
+prefer_count_1 = false
+prefer_count_0 = false
+
+[sqlfluff:rules:references.from]
+force_enable = true
+
+[sqlfluff:rules:references.qualification]
+force_enable = true
+
+[sqlfluff:rules:references.consistent]
+force_enable = true

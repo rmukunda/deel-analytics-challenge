@@ -1,0 +1,69 @@
+version: 2
+
+models:
+  - name: int_acceptance_chargeback
+    description: Left join of `stg_acceptance` to `stg_chargeback` on `transaction_id`, one row per acceptance transaction. Resolves the transaction's currency-specific FX rate from the raw JSON rates map.
+    columns:
+      - name: transaction_id
+        description: Internal transaction identifier from source system.
+        tests:
+          - unique
+          - not_null
+      - name: status
+        description: Boolean flag of unclear/unconfirmed meaning at this time;
+      - name: payment_provider
+        description: Payment provider/source system that processed the transaction (e.g. GLOBALPAY).
+      - name: provider_external_ref
+        description: Globepay's unique transaction identifier.
+      - name: transaction_timestamp
+        description: Timestamp the transaction occurred.
+      - name: transaction_status
+        description: Outcome of the transaction as returned by Globepay - either ACCEPTED or DECLINED.
+        tests:
+          - accepted_values:
+              values: ['ACCEPTED', 'DECLINED']
+              config:
+                severity: warn
+      - name: is_cvv_provided
+        description: Boolean flag indicating whether the CVV was provided at time of transaction.
+      - name: transaction_amount
+        description: Amount charged to the card, in the transaction's currency.
+      - name: card_country_code
+        description: Two-character ISO country code of the card used in the transaction.
+      - name: currency_code
+        description: Three-character ISO currency code used in the transaction.
+      - name: fx_rate_usd_to_local
+        description: Exchange rate from USD to the transaction's currency at time of transaction, resolved from the `fx_rates_to_usd` JSON via the `get_fx_rate_to_usd` macro.
+      - name: fx_rate_local_to_usd
+        description: Exchange rate from the transaction's currency to USD at time of transaction (i.e. USD per 1 unit of local currency), calculated as `1 / fx_rate_usd_to_local`. Multiply `transaction_amount` by this to get the USD-equivalent amount. Null if `fx_rate_usd_to_local` is null or zero.
+      - name: chargeback_status
+        description: Status of the chargeback record for this transaction.
+      - name: is_chargeback
+        description: Boolean flag indicating whether the transaction resulted in a chargeback.
+
+unit_tests:
+  - name: test_fx_rate_extraction_and_inversion
+    description: >
+      Validates the FX rate resolution: the transaction's currency rate is extracted
+      from the raw `fx_rates_to_usd` JSON via the `get_fx_rate_to_usd` macro
+      (USD-to-local), then the `fx_rate_local_to_usd`. Covers a 1:1 rate, a
+      fractional rate, a currency missing from the JSON map, and a zero rate (divide-by-zero
+      guard via `nullif`).
+    model: int_acceptance_chargeback
+    given:
+      - input: ref('stg_acceptance')
+        rows:
+          - {transaction_id: t1, currency_code: USD, fx_rates_to_usd: '{"USD":1,"EUR":2,"GBP":4}'}
+          - {transaction_id: t2, currency_code: EUR, fx_rates_to_usd: '{"USD":1,"EUR":2,"GBP":4}'}
+          - {transaction_id: t3, currency_code: GBP, fx_rates_to_usd: '{"USD":1,"EUR":2,"GBP":4}'}
+          - {transaction_id: t4, currency_code: JPY, fx_rates_to_usd: '{"USD":1,"EUR":2,"GBP":4}'}
+          - {transaction_id: t5, currency_code: ZWL, fx_rates_to_usd: '{"USD":1,"ZWL":0}'}
+      - input: ref('stg_chargeback')
+        rows: []
+    expect:
+      rows:
+        - {transaction_id: t1, fx_rate_usd_to_local: 1, fx_rate_local_to_usd: 1}
+        - {transaction_id: t2, fx_rate_usd_to_local: 2, fx_rate_local_to_usd: 0.5}
+        - {transaction_id: t3, fx_rate_usd_to_local: 4, fx_rate_local_to_usd: 0.25}
+        - {transaction_id: t4, fx_rate_usd_to_local: null, fx_rate_local_to_usd: null}
+        - {transaction_id: t5, fx_rate_usd_to_local: 0, fx_rate_local_to_usd: null}

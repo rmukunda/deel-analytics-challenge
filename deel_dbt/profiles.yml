@@ -1,0 +1,18 @@
+deel_dbt:
+  target: prod
+  outputs:
+    prod:
+      type: snowflake
+      account: "{{ env_var('DEEL_SNOWFLAKE_ACCOUNT') }}"
+
+      user: dbt_runner
+      authenticator: snowflake
+      password: "{{ env_var('DEEL_SNOWFLAKE_PAT') }}"
+
+      role: DEEL_READ_WRITE
+      database: DEEL
+      warehouse: DBT_WORKLOAD
+      schema: PUBLIC
+
+      threads: 4
+      client_session_keep_alive: False

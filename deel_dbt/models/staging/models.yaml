@@ -1,0 +1,71 @@
+version: 2
+
+models:
+  - name: stg_acceptance
+    description: Staged acceptance transactions, sourced from the `acceptance_transactions` seed. Contains one row per card payment attempt processed through the Globepay API.
+    columns:
+      - name: transaction_id
+        description: Internal transaction identifier from source system.
+        tests:
+          - unique
+          - not_null
+      - name: status
+        description: Boolean flag of unclear/unconfirmed meaning at this time; 
+      - name: payment_provider
+        description: Payment provider/source system that processed the transaction (e.g. GLOBALPAY).
+      - name: provider_external_ref
+        description: Globepay's unique transaction identifier.
+      - name: transaction_timestamp
+        description: Timestamp the transaction occurred.
+      - name: transaction_status
+        description: Outcome of the transaction as returned by Globepay - either ACCEPTED or DECLINED.
+        tests:
+          - accepted_values:
+              values: ['ACCEPTED', 'DECLINED']
+              config:
+                severity: warn
+      - name: is_cvv_provided
+        description: Boolean flag indicating whether the CVV was provided at time of transaction.
+      - name: transaction_amount
+        description: Amount charged to the card, in the transaction's currency.
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+              config:
+                severity: warn
+      - name: card_country_code
+        description: Two-character ISO country code of the card used in the transaction.
+      - name: currency_code
+        description: Three-character ISO currency code used in the transaction.
+      - name: fx_rates_to_usd
+        description: JSON map of currency conversion rates to USD at time of transaction. 
+
+  - name: stg_chargeback
+    description: Staged chargeback report, sourced from the `chargeback_report` seed. Contains one row per payment transaction with its chargeback status.
+    columns:
+      - name: transaction_id
+        description: Internal transaction identifier from source system.
+        tests:
+          - unique
+          - not_null
+      - name: chargeback_status
+        description: Status of the chargeback record for this transaction.
+      - name: payment_provider
+        description: Payment provider/source system that processed the transaction (e.g. GLOBEPAY).
+      - name: is_chargeback
+        description: Boolean flag indicating whether the transaction resulted in a chargeback.
+
+  - name: stg_country
+    description: Staged country reference data, sourced from the hand-built `countries` seed. Contains one row per country. dim_country is essentially a wrapper on this model.
+    columns:
+      - name: country_id
+        description: Surrogate identifier for the country.
+        tests:
+          - unique
+          - not_null
+      - name: country_code
+        description: Two-character ISO country code.
+      - name: country_name
+        description: Full country name.
+      - name: currency_code
+        description: Three-character ISO currency code used in transactions.

@@ -1,0 +1,116 @@
+version: 2
+
+models:
+  - name: dim_calendar
+    description: Daily date spine from 2018-01-01 through 2027-12-31, with common calendar attributes.
+    columns:
+      - name: date_day
+        description: Calendar date (day grain).
+        tests:
+          - unique
+          - not_null
+      - name: year
+        description: Calendar year of `date_day`.
+      - name: month
+        description: Calendar month number (1-12) of `date_day`.
+      - name: quarter
+        description: Calendar quarter number (1-4) of `date_day`.
+      - name: week_number
+        description: Week number within the year for `date_day`.
+      - name: week_start_date
+        description: Date of the first day (Monday) of the week containing `date_day`.
+      - name: day_of_week
+        description: Abbreviated day name (e.g. Mon, Tue) for `date_day`.
+      - name: year_month
+        description: Year and month of `date_day`, formatted as `YYYY-MM` (e.g. 2020-03).
+      - name: year_quarter
+        description: Year and quarter of `date_day`, formatted as `YYYY-Q#` (e.g. 2020-Q1).
+      - name: year_week_number
+        description: Year and week number of `date_day`, formatted as `YYYY-W##` (e.g. 2020-W10).
+
+  - name: dim_country
+    description: Country reference data, a thin pass-through of `stg_country` (which is itself a pass-through of the `countries` seed).
+    columns:
+      - name: country_id
+        description: Surrogate identifier for the country.
+        tests:
+          - unique
+          - not_null
+      - name: country_code
+        description: Two-character ISO country code.
+      - name: country_name
+        description: Full country name.
+      - name: currency_code
+        description: Three-character ISO currency code used in transactions.
+
+  - name: fct_acceptance_transactions
+    description: Fact table of acceptance transactions, one row per transaction, derived from `int_acceptance_chargeback`. Card country and currency are resolved to a `dim_country` reference rather than kept as raw codes.
+    columns:
+      - name: transaction_id
+        description: Internal transaction identifier from source system.
+        tests:
+          - unique
+          - not_null
+      - name: status
+        description: Boolean flag of unclear/unconfirmed meaning at this time;
+      - name: payment_provider
+        description: Payment provider/source system that processed the transaction (e.g. GLOBALPAY).
+      - name: provider_external_ref
+        description: Globepay's unique transaction identifier.
+      - name: transaction_timestamp
+        description: Timestamp the transaction occurred.
+      - name: transaction_date_key
+        description: Calendar date the transaction occurred, derived from `transaction_timestamp`. Joins to `dim_calendar.date_day`.
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_calendar')
+                field: date_day
+      - name: transaction_status
+        description: Outcome of the transaction as returned by Globepay - either ACCEPTED or DECLINED.
+      - name: is_cvv_provided
+        description: Boolean flag indicating whether the CVV was provided at time of transaction.
+      - name: transaction_amount
+        description: Amount charged to the card, in the transaction's currency.
+      - name: fx_rate_local_to_usd
+        description: Exchange rate from the transaction's currency to USD at time of transaction (i.e. USD per 1 unit of local currency).
+      - name: transaction_amount_usd
+        description: Transaction amount converted to USD, calculated as `transaction_amount * fx_rate_local_to_usd`.
+      - name: country_id
+        description: Foreign key to `dim_country`, resolved from the card's country code. Replaces the raw card country code and currency code.
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_country')
+                field: country_id
+      - name: transaction_anomoly
+        description: Boolean flag indicating the transaction amount was negative.
+      - name: is_chargeback
+        description: Boolean flag indicating whether the transaction resulted in a chargeback.
+
+unit_tests:
+  - name: test_transaction_amount_usd_conversion
+    description: >
+      Validates the final leg of the FX conversion chain: `transaction_amount_usd` =
+      `transaction_amount` * `fx_rate_local_to_usd`, where `fx_rate_local_to_usd` is the rate
+      already resolved upstream (in `int_acceptance_chargeback`) from the raw FX JSON  -
+      see `test_fx_rate_extraction_and_inversion` for that leg. Covers a 1:1 rate, a
+      fractional rate, and a null rate (currency unresolvable from the JSON ).
+    model: fct_acceptance_transactions
+    given:
+      - input: ref('int_acceptance_chargeback')
+        rows:
+          - {transaction_id: t1, transaction_amount: 100, fx_rate_local_to_usd: 1, card_country_code: US}
+          - {transaction_id: t2, transaction_amount: 100, fx_rate_local_to_usd: 0.25, card_country_code: GB}
+          - {transaction_id: t3, transaction_amount: 100, fx_rate_local_to_usd: null, card_country_code: GB}
+      - input: ref('dim_country')
+        rows:
+          - {country_code: US, country_id: 1}
+          - {country_code: GB, country_id: 2}
+    expect:
+      rows:
+        - {transaction_id: t1, transaction_amount_usd: 100}
+        - {transaction_id: t2, transaction_amount_usd: 25}
+        - {transaction_id: t3, transaction_amount_usd: null}
