@@ -110,7 +110,7 @@ select
     c.year_month,
     count_if(f.transaction_status = 'ACCEPTED')        as accepted_transactions,
     count(*)                                            as total_transactions,
-    (accepted_transactions / total_transactions) * 100           as acceptance_rate
+    ((accepted_transactions / total_transactions) * 100)::decimal(5,2)  as acceptance_rate
 from deel.marts.fct_acceptance_transactions f
 join deel.marts.dim_calendar c 
     on f.transaction_date_key = c.date_day
@@ -121,61 +121,65 @@ order by 1;
 Swap `c.year_month` for `c.date_day`, `c.year_week_number`, or `c.year_quarter`
 depending on the granularity necessary. More columns derived from the date can be added to `dim_calendar` for aggregating.
 
-**Result on current data** (Jan–Jun 2019, monthly): acceptance rate is stable
-around **69–72%** every month (overall 69.6%, 3,777/5,430), no material trend:
+**Result on current data**: It hovers around a tight band between 67 to 72 percent.
 
 | Month | Accepted / Total | Rate |
 |---|---|---|
-| 2019-01 | 647 / 930 | 69.6% |
-| 2019-02 | 589 / 840 | 70.1% |
-| 2019-03 | 641 / 930 | 68.9% |
-| 2019-04 | 610 / 900 | 67.8% |
-| 2019-05 | 645 / 930 | 69.4% |
-| 2019-06 | 645 / 900 | 71.7% |
+| 2019-01 | 647 / 930 | 69.57% |
+| 2019-02 | 589 / 840 | 70.12% |
+| 2019-03 | 641 / 930 | 68.92% |
+| 2019-04 | 610 / 900 | 67.78% |
+| 2019-05 | 645 / 930 | 69.35% |
+| 2019-06 | 645 / 900 | 71.67% |
 
 ### Q2 — Countries where declined transactions exceeded $25M
 
 ```sql
-select
-    co.country_name,
-    sum(f.transaction_amount_usd)  as declined_amount_usd
-from {{ ref('fct_acceptance_transactions') }} f
-join {{ ref('dim_country') }} co
-    on f.country_id = co.country_id
-where f.transaction_status = 'DECLINED'
-group by 1
-having sum(f.transaction_amount_usd) > 25000000
-order by declined_amount_usd desc
+With decline_check as 
+    (select dc.country_id, dc.country_code, dc.country_name, sum(transaction_amount_usd) as total_amount, SUM(IFF(transaction_status = 'DECLINED', transaction_amount_usd, 0)) as declined_amount,
+     (SUM(IFF(transaction_status = 'DECLINED', transaction_amount_usd, 0))/1000000) declined_millions
+    from deel.marts.fct_acceptance_transactions t join deel.marts.dim_country dc on t.COUNTRY_ID = dc.country_id
+    where not transaction_anomoly
+    group by 1,2,3
+    having SUM(IFF(transaction_status = 'DECLINED', transaction_amount_usd, 0)) >= 25000000)
+
+SELECT country_code, country_name, declined_millions::decimal(5,2) as "Declined amount (USD)"
+from decline_check
+    ;
 ```
 
-**Result on current data**: 4 of the 6 countries clear the $25M threshold —
+**Result on current data**: 4 countries clear the $25M threshold —
 
-| Country | Declined amount (USD) |
+| Country_Code | Country | Declined amount (USD) |
 |---|---|
-| France | $32.6M |
-| United Kingdom | $27.5M |
-| United Arab Emirates | $26.3M |
-| United States | $25.1M |
-| ~~Canada~~ | $18.4M (below threshold) |
-| ~~Mexico~~ | $0.9M (below threshold) |
+| FR | France | $32.6M |
+| UK | United Kingdom | $27.5M |
+| AE | United Arab Emirates | $26.3M |
+| US | United States | $25.1M |
+
 
 ### Q3 — Transactions missing chargeback data
 
 ```sql
-select *
-from {{ ref('fct_acceptance_transactions') }}
-where is_chargeback is null
+    select * 
+    from deel.intermediate.int_acceptance_chargeback 
+    where is_chargeback is null ;
 ```
 
-`is_chargeback` is `null` only when `int_acceptance_chargeback`'s left join to
-`stg_chargeback` found no matching `transaction_id` — i.e. Globepay hasn't (yet)
-reported a chargeback outcome for that transaction. **On the current seed data
-this returns zero rows** (every transaction has a chargeback record), but the
-query — and the left join it depends on — is what protects the analyst when
-the two feeds fall out of sync in production, e.g. if the chargeback feed is
-ingested on a lag relative to the acceptance feed.
+`is_chargeback` is `null` in `int_acceptance_chargeback` when a transaction in `stg_acceptance` doesn't have a corresponding entry in `stg_chargeback`
 
-## 7. Running the project
+## 7 Snowflake Setup
+
+For the dbt project to run. Following are needed.
+
+1. A database named deel
+2. A role called DEEL_READ_WRITE with permissions to create objects in deel database
+3. A warehouse called DBT_WORKLOAD
+4. A user with access to DEEL_READ_WRITE role.
+
+There a script at `snowflake\db_user_setup.sql` to set this up on snowflake. profiles.yml in the repo can be used if the script is followed by setting the environment variables for `DEEL_SNOWFLAKE_ACCOUNT` and `DEEL_SNOWFLAKE_PAT` in the venv where the dbt is being run from.
+
+## 8. Running the project
 
 ```bash
 dbt deps      # install dbt_utils
