@@ -132,6 +132,10 @@ depending on the granularity necessary. More columns derived from the date can b
 | 2019-05 | 645 / 930 | 69.35% |
 | 2019-06 | 645 / 900 | 71.67% |
 
+![Acceptance rate over time](acceptance_rate.png)
+
+
+
 ### Q2 — Countries where declined transactions exceeded $25M
 
 ```sql
